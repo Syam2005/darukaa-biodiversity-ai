@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Darukaa.Earth — Biodiversity Intelligence Chatbot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --green: #1f6f4a;
+    --green-light: #e7f3ec;
+    --bg: #f7f7f5;
+    --text: #1c1c1c;
+    --muted: #6b6b6b;
+    --border: #dcdcd8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    padding: 18px 24px; background: var(--green); color: #fff;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
+  #app {
+    max-width: 760px; margin: 0 auto; padding: 16px;
+    display: flex; flex-direction: column; height: calc(100vh - 90px);
+  }
+  #log {
+    flex: 1; overflow-y: auto; padding: 8px 4px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; line-height: 1.45; font-size: 14.5px; }
+  .user { align-self: flex-end; background: var(--green); color: #fff; border-bottom-right-radius: 2px; }
+  .bot { align-self: flex-start; background: #fff; border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+  .rec-card {
+    align-self: flex-start; max-width: 92%; background: #fff; border: 1px solid var(--border);
+    border-left: 4px solid var(--green); border-radius: 8px; padding: 12px 14px; font-size: 13.5px;
+  }
+  .rec-card h3 { margin: 0 0 6px; font-size: 14.5px; color: var(--green); }
+  .rec-card .meta { margin-top: 8px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { background: var(--green-light); color: var(--green); padding: 2px 8px; border-radius: 999px; }
+  .rec-card .source { margin-top: 8px; font-size: 12px; color: var(--muted); font-style: italic; }
+  #inputRow { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+  #textInput {
+    flex: 1; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); font-size: 14px;
+  }
+  button {
+    background: var(--green); color: #fff; border: none; border-radius: 10px; padding: 0 18px; font-size: 14px; cursor: pointer;
+  }
+  button:hover { opacity: .92; }
+  #known { font-size: 12px; color: var(--muted); padding: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 Darukaa.Earth — Biodiversity Intelligence Chatbot</h1>
+  <p>Knowledge-grounded reasoning across soil, water, climate, land use and biodiversity.</p>
+</header>
+<div id="app">
+  <div id="known"></div>
+  <div id="log"></div>
+  <div id="inputRow">
+    <input id="textInput" type="text" placeholder="e.g. Biodiversity is declining on my land..." />
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
+
+<script>
+// Point this at wherever the FastAPI backend is deployed.
+const API_BASE = window.API_BASE || "http://localhost:8000";
+const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
+
+const log = document.getElementById("log");
+const input = document.getElementById("textInput");
+const knownBar = document.getElementById("known");
+
+function addMsg(text, who) {
+  const div = document.createElement("div");
+  div.className = "msg " + who;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addRecommendations(recs) {
+  recs.forEach(r => {
+    const card = document.createElement("div");
+    card.className = "rec-card";
+    card.innerHTML = `
+      <h3>${escapeHtml(r.title)}</h3>
+      <div><strong>What:</strong> ${escapeHtml(r.what_to_do)}</div>
+      <div style="margin-top:6px;"><strong>Why:</strong> ${escapeHtml(r.why_it_works)}</div>
+      <div style="margin-top:6px;"><strong>Expected impact:</strong> ${escapeHtml(r.expected_impact)}</div>
+      <div class="meta">
+        ${r.impacted_metrics.map(m => `<span class="tag">${escapeHtml(m)}</span>`).join("")}
+        <span class="tag">⏱ ${escapeHtml(r.time_horizon)}-term</span>
+        <span class="tag">confidence: ${escapeHtml(r.confidence)}</span>
+      </div>
+      <div class="source">Source: ${escapeHtml(r.source)}</div>
+    `;
+    log.appendChild(card);
+  });
+  log.scrollTop = log.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text) return;
+  addMsg(text, "user");
+  input.value = "";
+  try {
+    const res = await fetch(`${API_BASE}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message: text }),
+    });
+    const data = await res.json();
+    addMsg(data.message, "bot");
+    if (data.recommendations && data.recommendations.length) {
+      addRecommendations(data.recommendations);
+    }
+    if (data.known_fields && Object.keys(data.known_fields).length) {
+      knownBar.textContent = "Known so far: " + Object.entries(data.known_fields).map(([k,v]) => `${k}=${v}`).join(", ");
+    }
+  } catch (err) {
+    addMsg("Could not reach the backend at " + API_BASE + ". Is it running?", "bot");
+  }
+}
+
+document.getElementById("sendBtn").addEventListener("click", send);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+
+addMsg("Hi! Tell me what's happening on your land — e.g. \"Biodiversity is declining on my land\" — and I'll ask for whatever soil/rainfall/land-use details I need.", "bot");
+</script>
+</body>
+</html>
