@@ -1,3 +1,5 @@
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 """Darukaa.Earth Biodiversity Intelligence Chatbot - API entrypoint.
 
 Endpoints:
@@ -106,3 +108,7 @@ def list_knowledge():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# Serve the frontend from the same FastAPI service.
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
